@@ -14,6 +14,7 @@
   "type": "module",
   "description": "",
   "dependencies": {
+    "dotenv": "^17.4.2",
     "ejs": "^3.1.10",
     "express": "^4.22.2",
     "httpolyglot": "^0.1.2",

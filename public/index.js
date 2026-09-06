@@ -89,10 +89,10 @@ async function decryptData(key, encrypted, iv) {
   roomName = decryptedRoomId
   username = decryptedName
 
-  const baseurl = `https://172.28.196.231:5000/`
+  const baseurl = process.env.SERVER_URL || 'https://' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + window.location.pathname;
   const link = `${baseurl}?RID=${encodeURIComponent(roomName)}`
 
-  const message = `${username} has invited you to join a Meeting..%0A%0AJoin the meeting:%0Ahttps://172.28.196.231:5000/?RID=${encodeURIComponent(roomName)}%0A%0AOr by RoomId: ${roomName}`;
+  const message = `${username} has invited you to join a Meeting..%0A%0AJoin the meeting:${link}%0A%0AOr by RoomId: ${roomName}`;
 
 
 

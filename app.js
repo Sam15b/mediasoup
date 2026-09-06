@@ -1,15 +1,42 @@
 import express from 'express'
 const app = express()
 
+import 'dotenv/config'
+
 import https from 'httpolyglot'
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 const __dirname = path.resolve()
 
 import favicon from 'serve-favicon'
 
 import { Server } from 'socket.io'
 import mediasoup from 'mediasoup'
+
+// Network IPs from .env (with auto-detect fallback for LOCAL_IP)
+const PUBLIC_IP = process.env.PUBLIC_IP || '127.0.0.1'
+const LOCAL_IP = process.env.LOCAL_IP || (() => {
+  const nets = os.networkInterfaces()
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address
+      }
+    }
+  }
+  return '127.0.0.1'
+})()
+
+// API key for remote (non-localhost) connection authentication
+const API_KEY = process.env.API_KEY || ''
+
+// Helper: check if a client IP is local
+const isLocalIp = (clientIp) => {
+  return clientIp === '127.0.0.1' || clientIp === '::1' ||
+    clientIp === '::ffff:127.0.0.1' || clientIp.startsWith('172.28.') ||
+    clientIp.startsWith('192.168.') || clientIp.startsWith('10.')
+}
 
 // Set EJS as the templating engine
 app.set("view engine", "ejs");
@@ -65,6 +92,32 @@ const io = new Server(httpsServer)
 
 // socket.io namespace (could represent a room?)
 const connections = io.of('/mediasoup')
+
+// Authentication middleware: remote clients must provide the correct API key
+// Local clients (localhost, LAN) bypass auth
+connections.use((socket, next) => {
+  const clientIp = socket.handshake.address
+
+  if (isLocalIp(clientIp)) {
+    console.log(`Auth: local connection from ${clientIp} — allowed`)
+    return next()
+  }
+
+  const providedKey = socket.handshake.auth?.apiKey || socket.handshake.query?.apiKey
+
+  if (!API_KEY) {
+    console.error(`Auth: API_KEY not set in .env — rejecting remote connection from ${clientIp}`)
+    return next(new Error('Server authentication not configured'))
+  }
+
+  if (providedKey !== API_KEY) {
+    console.error(`Auth: invalid API key from ${clientIp} — rejected`)
+    return next(new Error('Invalid API key'))
+  }
+
+  console.log(`Auth: remote connection from ${clientIp} — API key valid`)
+  next()
+})
 
 /**
  * Worker
@@ -331,8 +384,12 @@ connections.on('connection', async socket => {
     // get Router (Room) object this peer is in based on RoomName
     const router = rooms[roomName].router
 
+    // Determine announcedIp based on where the client is connecting from
+    const clientIp = socket.handshake.address
+    const announcedIp = isLocalIp(clientIp) ? LOCAL_IP : PUBLIC_IP
+    console.log(`createWebRtcTransport | client: ${clientIp} | announcedIp: ${announcedIp}`)
 
-    createWebRtcTransport(router).then(
+    createWebRtcTransport(router, announcedIp).then(
       transport => {
         callback({
           params: {
@@ -612,7 +669,7 @@ connections.on('connection', async socket => {
   })
 })
 
-const createWebRtcTransport = async (router) => {
+const createWebRtcTransport = async (router, announcedIp) => {
   return new Promise(async (resolve, reject) => {
     try {
       // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcTransportOptions
@@ -620,8 +677,7 @@ const createWebRtcTransport = async (router) => {
         listenIps: [
           {
             ip: '0.0.0.0', // replace with relevant IP address
-            announcedIp: process.env.MY_IP || null,
-            //announcedIp:'65.0.90.89'
+            announcedIp: announcedIp,
           }
         ],
         enableUdp: true,
