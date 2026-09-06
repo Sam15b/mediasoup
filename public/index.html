@@ -32,6 +32,7 @@
             text-indent: -999px;
             cursor: pointer;
             background-color: #000;
+            /* background-clip: padding-box; */
             border-radius: 15px;
             border-top: 10px solid #fff;
             border-bottom: 3px solid #fff;
@@ -48,8 +49,10 @@
             justify-content: space-between;
             align-items: center;
             background-color: #333;
+            /* Dark background */
             padding: 8px 16px;
             color: #fff;
+            /* White text */
             font-family: Arial, sans-serif;
             font-size: 14px;
             position: relative;
@@ -71,13 +74,16 @@
 
         .user-details {
             white-space: nowrap;
+            /* Prevent text from wrapping */
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .stop-presenting {
             background-color: #4a90e2;
+            /* Blue button */
             color: #fff;
+            /* White text */
             border: none;
             border-radius: 15px;
             padding: 8px 12px;
@@ -88,6 +94,7 @@
 
         .stop-presenting:hover {
             background-color: #357abd;
+            /* Darker blue on hover */
         }
 
         .center-container {
@@ -95,24 +102,61 @@
             justify-content: center;
             align-items: center;
             height: 90vh;
+            /* Full viewport height for centering */
             background-color: #333;
+            /* Creamish background */
         }
 
         .center-container .video-card {
             background-color: #333;
+            /* Dark card background */
+            /* border-radius: 10px;
+            padding: 16px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); */
 
+            /* width: 100%;
+            max-width: 100%; */
         }
 
         .center-container .video-card video {
-
+            /* width: 55%; */
+            /* border-radius: 10px; */
             margin: 0 auto;
             display: flex
         }
 
+        /* Grid container for the video layout */
+        /* .grid-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            /* 2 columns 
+            grid-gap: 20px;
+            padding: 20px;
+            background-color: #2c2c2c;
+            /* Optional dark background 
+            height: 90vh;
+            /* Full page height 
+            box-sizing: border-box;
+        }
+
+        .grid-container .video-card {
+            position: relative;
+            background-color: #333;
+            /* Dark background for fallback 
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        } */
+
         .video-stream {
+            /* width: 100%; */
             height: 100%;
             object-fit: cover;
+            /* Cover the whole card */
             border-radius: 8px;
+            /* Ensuring the video fits within rounded borders */
         }
 
         .user-name {
@@ -120,14 +164,17 @@
             bottom: 10px;
             left: 10px;
             z-index: 2;
+            /* Ensuring name is on top of the video */
             color: white;
             font-size: 18px;
             font-weight: bold;
             background-color: rgba(0, 0, 0, 0.6);
+            /* Semi-transparent background */
             padding: 5px 10px;
             border-radius: 4px;
         }
 
+        /* Styling for the control bar */
         .control-bar {
             position: fixed;
             bottom: 20px;
@@ -165,6 +212,11 @@
             display: flex;
         }
 
+        /* .control-btn:hover {
+            background-color: #555;
+        } */
+
+        /* Red color for mute, video off, and end call buttons */
         .mic-btn,
         .video-btn,
         .end-call-btn {
@@ -185,15 +237,19 @@
             transform: rotate(135deg);
         }
 
+        /* On hover, emphasize the icons */
         .end-call-btn:hover {
             background-color: #f44336;
         }
 
+        /* this is share banner section styling */
         .bagger {
             background: #888;
             position: inherit;
+            /* top: 0%; */
             left: 50%;
             transform: translate(-50%, -50%);
+            /* width: 100%; */
             text-align: center;
             padding-top: 1.8%;
             padding-bottom: 0.3%;
@@ -271,7 +327,8 @@
             }
         }
 
-
+        /* share banner css ended */
+        /* this is pop up share social */
         #share-btn {
             padding: 10px 20px;
             background-color: #007bff;
@@ -291,6 +348,7 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             border-radius: 12px;
             z-index: 1000;
+            /* width: 350px; */
             padding: 20px;
         }
 
@@ -386,6 +444,7 @@
             opacity: 0.8;
         }
 
+        /* pop up share social css ended */
     </style>
     <style id="dynamic-styles">
         .card1 .grid-container {
@@ -453,15 +512,42 @@
             </span>
         </div>
         <div class="carousel-indicators">
-
+            <!-- <button id="pointscroller" type="button" data-bs-target="#carouselExampleDark" class="active"
+                data-bs-slide-to="0" aria-current="true" aria-label="Slide 1" style="display:none;"></button>
+            <button type="button" data-bs-target="#carouselExampleDark" data-bs-slide-to="1"
+                aria-label="Slide 2"></button> -->
             <button id="pointscroller" type="button" data-bs-target="#carouselExampleDark" class="active"
                 data-bs-slide-to="0" aria-current="true" aria-label="Slide 1"></button>
         </div>
         <div class="carousel-inner">
-
+            <!-- <div id="card_0" class="carousel-item active" data-bs-interval="10000" style="display:none;">
+                <!-- <div id="top-bar" class="top-bar">
+                    <div class="user-section">
+                        <!-- <img src="share-icon.png" alt="Share Icon" class="share-icon"> 
+                        <span class="user-details">1152 Syed Abdul Mannan (You, presenting)</span>
+                    </div>
+                    <button class="stop-presenting">Stop presenting</button>
+                </div>
+                <div id="center-container" class="center-container">
+                    <div class="video-card">
+                        <!-- <video controls>
+                            <source src="your-video.mp4" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video> 
+                    </div> 
+                </div>
+            </div> -->
             <div class="carousel-item card1 active" data-bs-interval="10000">
                 <div id="video-container1" class="grid-container">
-
+                    <!-- <div class="video-card1" id="video-card-1">
+                                    <div class="user-name">sam</div>
+                              </div>
+                              <div class="video-card1" id="video-card-1">
+                                    <div class="user-name">mannan</div>
+                              </div>
+                              <div class="video-card1" id="video-card-1">
+                                    <div class="user-name">nabeel</div>
+                              </div> -->
                 </div>
             </div>
         </div>

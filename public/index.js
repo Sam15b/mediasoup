@@ -1,10 +1,14 @@
 const io = require('socket.io-client')
 const mediasoupClient = require('mediasoup-client')
 
+//const pathSegments = window.location.pathname.split('/');
 
+// Assuming the path is structured as '/sfu/:room/:username'
+//const roomName = pathSegments[2];  // 'room123'
+//const username = pathSegments[3];  // 'johndoe'
 let roomName, username
 
-
+// Convert Base64 to ArrayBuffer
 function base64ToArrayBuffer(base64) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -14,12 +18,12 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-
+// Get URL Query Parameter
 function getQueryParam(param) {
   return new URLSearchParams(window.location.search).get(param);
 }
 
-
+// Import AES Key from Local Storage
 async function importKey() {
   const storedKey = localStorage.getItem("aesKey");
   if (!storedKey) {
@@ -29,7 +33,7 @@ async function importKey() {
   }
 
   const keyBuffer = base64ToArrayBuffer(storedKey);
-
+  //console.log("keyBuffer", keyBuffer)
   return crypto.subtle.importKey(
     "raw",
     keyBuffer,
@@ -39,6 +43,7 @@ async function importKey() {
   );
 }
 
+// Decrypt Data
 async function decryptData(key, encrypted, iv) {
 
   try {
@@ -57,7 +62,7 @@ async function decryptData(key, encrypted, iv) {
   }
 }
 
-
+// Main Decryption Logic
 (async () => {
   const encryptedName = getQueryParam("name");
   const encryptedId = getQueryParam("id");
@@ -76,7 +81,7 @@ async function decryptData(key, encrypted, iv) {
 
   if (!key) return;
 
-
+  // Decrypt Name and Room ID
   const decryptedName = await decryptData(key, encryptedName, Nameiv);
   const decryptedRoomId = await decryptData(key, encryptedId, Idiv);
 
@@ -107,13 +112,15 @@ async function decryptData(key, encrypted, iv) {
   const gmail = document.querySelector('.email')
   gmail.href = `https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=&su=${gmail_msg}&body=${message}`;
 
-
+  // LinkedIn Share Link (with custom message)
   const linkedin = document.querySelector('.linkedin');
   linkedin.href = `https://www.linkedin.com/sharing/share-offsite/?url=${link}`;
 
   document.getElementById("share-link").value = link
 
 
+
+  // Remove key when user leaves the page
   window.addEventListener("beforeunload", () => {
     localStorage.removeItem("aesKey");
   });
@@ -130,24 +137,32 @@ socket.on('connection-success', ({ socketId }) => {
   console.log("socketid", socketid)
   const videoContainer = document.getElementById('video-container1');
 
-
+  // Create the outer div with class 'video-card'
   const videoCard = document.createElement('div');
   videoCard.className = 'video-card1';
   videoCard.id = 'video-card-1'
+  // Create the video element with class 'video-stream', autoplay, and muted attributes
+  // const videoStream = document.createElement('video');
+  // videoStream.className = 'video-stream';
+  // //videoStream.srcObject = stream
+  // videoStream.autoplay = false;
+  // videoStream.muted = false;
 
+  // Create the div for the user name
   const userName = document.createElement('div');
   userName.className = 'user-name';
   userName.textContent = `${username}`;
 
-
+  // Append the video and username div to the videoCard
+  //videoCard.appendChild(videoStream);
   videoCard.appendChild(userName);
 
-
+  // Append the videoCard to the container
   videoContainer.appendChild(videoCard);
   videoElement = document.querySelector('.video-stream');
   console.log(videoElement)
   joinRoom()
-
+  // getLocalStream()
 })
 
 let device
@@ -163,7 +178,7 @@ let storeidandsource = new Map()
 let localAudioTrack = null;
 let localVideoTrack = null;
 let localscreenSharingTrack = null;
-let localStream = new MediaStream(); 
+let localStream = new MediaStream(); // Create an empty media stream to add tracks dynamically
 let localScreenShareStream = new MediaStream();
 let ScreenSharingOn = false;
 let ScreenSharingPeerId;
@@ -196,8 +211,8 @@ let params = {
 }
 
 let audioParams;
-let ScreenShareParms = { params }
-let videoParams = { params };
+let ScreenShareParms = { ...params }
+let videoParams = { ...params };
 let consumingTransports = [];
 
 const streamSuccess = (stream) => {
@@ -206,18 +221,20 @@ const streamSuccess = (stream) => {
   audioParams = { track: stream.getAudioTracks()[0], ...audioParams };
   videoParams = { track: stream.getVideoTracks()[0], ...videoParams };
 
-
+  //joinRoom()
 }
 
 const joinRoom = () => {
   console.log('Joining room with stream:', localStream);
   const devices = 'web'
-  
+  // Emit the joinRoom request with emitWithAck-like logic (emit + server response as event)
   socket.emit('joinRoom', { roomName, username, devices });
 
+  // Listen for successful room join event from the server
   socket.on('FlutterjoinRoomSuccess', (data) => {
     console.log(`Router RTP Capabilities: ${data.rtpCapabilities}`);
 
+    // Store RTP capabilities for the client device
     rtpCapabilities = data.rtpCapabilities;
     console.log("length of peer", data.peerlength)
 
@@ -225,397 +242,369 @@ const joinRoom = () => {
   });
 };
 
+// const getLocalStream = () => {
+//   navigator.mediaDevices.getUserMedia({
+//     audio: true,
+//     video: {
+//       width: {
+//         min: 640,
+//         max: 1920,
+//       },
+//       height: {
+//         min: 400,
+//         max: 1080,
+//       }
+//     }
+//   })
+//     .then(streamSuccess)
+//     .catch(error => {
+//       console.log(error.message)
+//     })
+// }
 
 const toggleAudio = async (enableAudio) => {
   if (enableAudio) {
-
-    if (!localAudioTrack) {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-          localAudioTrack = stream.getAudioTracks()[0]; 
-
-          localAudioTrack.enabled = true; 
-          audioParams = { track: localAudioTrack, appData: { source: 'mic' }, ...audioParams };
-
-          const element = document.querySelector('.fa-microphone-slash');
-
-          if (element) {
-            element.classList.remove('fa-microphone-slash');
-            element.classList.add('fa-microphone');
-            document.getElementById("mic_btn").style.background = '#888'
-          }
-
-          connectSendTransportAudio()
-        })
-        .catch(error => console.log(error.message));
-    } else {
-
-      const element = document.querySelector('.fa-microphone-slash');
-
-      if (element) {
-        element.classList.remove('fa-microphone-slash');
-        element.classList.add('fa-microphone');
-        document.getElementById("mic_btn").style.background = '#888'
+    try {
+      // Case 1: producer exists but is paused -> restart via replaceTrack + resume
+      if (audioProducer && audioProducer.paused) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        localAudioTrack = stream.getAudioTracks()[0]
+        localAudioTrack.enabled = true
+        await audioProducer.replaceTrack({ track: localAudioTrack })
+        await audioProducer.resume()
+        setMicBtnOn()
+        return
       }
 
-      localAudioTrack.enabled = true;
-      connectSendTransportAudio() 
+      // Case 2: first time -> produce on the transport
+      if (!audioProducer) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        localAudioTrack = stream.getAudioTracks()[0]
+        localAudioTrack.enabled = true
+        audioParams = { track: localAudioTrack, appData: { source: 'mic' }, ...audioParams }
+        setMicBtnOn()
+        await connectSendTransportAudio()
+        return
+      }
+
+      // Case 3: producer exists and not paused -> nothing to do
+      localAudioTrack.enabled = true
+      setMicBtnOn()
+    } catch (error) {
+      console.log(error.message)
     }
-  } else if (localAudioTrack) {
-    const element = document.querySelector('.fa-microphone');
+  } else {
+    // Turn off: pause producer (keep m-section stable), stop track to release mic
+    setMicBtnOff()
 
-    if (element) {
-      element.classList.remove('fa-microphone');
-      element.classList.add('fa-microphone-slash');
-      document.getElementById("mic_btn").style.background = '#ff4c4c'
+    if (audioProducer && !audioProducer.paused) {
+      await audioProducer.pause()
     }
 
-    localAudioTrack.stop();  
-    localAudioTrack = null;
-
-    if (audioProducer) {
-      console.log("Closing previous Audio producer...");
-      await audioProducer.close();
-      audioProducer = null;
-
-      audioParams = { params }
+    if (localAudioTrack) {
+      localAudioTrack.stop()
+      localAudioTrack = null
     }
-
-    let source = 'mic'
-    let id = storeidandsource.get(source)
-    storeidandsource.delete(source)
-    console.log(id)
-    socket.emit('AlertServertoRemoveMap', { source, id, roomName, socketid });
   }
 }
 
+const setMicBtnOn = () => {
+  const element = document.querySelector('.fa-microphone-slash');
+  if (element) {
+    element.classList.remove('fa-microphone-slash');
+    element.classList.add('fa-microphone');
+    document.getElementById("mic_btn").style.background = '#888'
+  }
+}
+
+const setMicBtnOff = () => {
+  const element = document.querySelector('.fa-microphone');
+  if (element) {
+    element.classList.remove('fa-microphone');
+    element.classList.add('fa-microphone-slash');
+    document.getElementById("mic_btn").style.background = '#ff4c4c'
+  }
+}
+
+// const toggleVideo = (enableVideo) => {
+//   if (enableVideo) {
+//     // Request video only if not already requested
+//     if (!localVideoTrack) {
+//       navigator.mediaDevices.getUserMedia({
+//         video: { width: { min: 640, max: 1920 }, height: { min: 400, max: 1080 } }
+//       })
+//         .then(stream => {
+//           localVideoTrack = stream.getVideoTracks()[0]; // Get the video track
+//           localStream.addTrack(localVideoTrack); // Add it to the main stream
+//           videoParams = { track: localVideoTrack, appData: { source: 'camera' }, ...videoParams };
+
+//           // Assign the stream to the first video element with class 'video-stream'
+//           videoElement.srcObject = localStream;
+//           videoElement.play(); // Play the video
+
+//           connectSendTransportVideo()
+//         })
+//         .catch(error => console.log(error.message));
+//     } else {
+//       localVideoTrack.enabled = true; // If already requested, just enable it
+
+//       connectSendTransportVideo()
+//     }
+//   } else if (localVideoTrack) {
+//     localVideoTrack.enabled = false; // Disable the video track
+//   }
+// }
 
 const toggleVideo = async (enableVideo) => {
   if (enableVideo) {
-
-    if (!localVideoTrack) {
-      navigator.mediaDevices.getUserMedia({
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { min: 640, max: 1920 }, height: { min: 400, max: 1080 } }
       })
-        .then(stream => {
-          localVideoTrack = stream.getVideoTracks()[0]; 
-          localStream.addTrack(localVideoTrack); 
-          videoParams = { track: localVideoTrack, appData: { source: 'camera' }, ...videoParams };
+      const newTrack = stream.getVideoTracks()[0]
 
-          const videoStream = document.createElement('video');
-          videoStream.className = 'video-stream';
-          videoStream.id = 'video';
-          videoStream.autoplay = false;
-          videoStream.muted = false;
-          videoStream.style.width = '100%'
-          videoStream.srcObject = localStream;
-          videoStream.play(); 
-          var videoCard = document.getElementById("video-card-1")
-          const firstChild = videoCard.firstChild
-          videoCard.insertBefore(videoStream, firstChild)
-
-          const element = document.querySelector('.fa-video-slash');
-
-          if (element) {
-            element.classList.remove('fa-video-slash');
-            element.classList.add('fa-video');
-            document.getElementById("video_btn").style.background = '#888'
-          }
-
-          connectSendTransportVideo()
-        })
-        .catch(error => console.log(error.message));
-    } else {
-
-      localVideoTrack.enabled = true;
-
-      const videoStream = document.createElement('video');
-      videoStream.className = 'video-stream';
-      videoStream.id = 'video';
-      videoStream.autoplay = false;
-      videoStream.muted = false;
-      videoStream.srcObject = localStream;
-      videoStream.play(); 
-      var videoCard = document.getElementById("video-card-1")
-      const firstChild = videoCard.firstChild
-      videoCard.insertBefore(videoStream, firstChild)
-
-      const element = document.querySelector('.fa-video-slash');
-
-      if (element) {
-        element.classList.remove('fa-video-slash');
-        element.classList.add('fa-video');
-        document.getElementById("video_btn").style.background = '#888'
+      // Case 1: producer exists but is paused -> restart via replaceTrack + resume (NO renegotiation)
+      if (videoProducer && videoProducer.paused) {
+        localVideoTrack = newTrack
+        localStream.addTrack(localVideoTrack)
+        await videoProducer.replaceTrack({ track: localVideoTrack })
+        await videoProducer.resume()
+        attachLocalVideoElement()
+        setVideoBtnOn()
+        return
       }
 
-      connectSendTransportVideo()
+      // Case 2: first time -> produce on the transport
+      if (!videoProducer) {
+        localVideoTrack = newTrack
+        localStream.addTrack(localVideoTrack)
+        videoParams = { track: localVideoTrack, appData: { source: 'camera' }, ...videoParams }
+        attachLocalVideoElement()
+        setVideoBtnOn()
+        await connectSendTransportVideo()
+        return
+      }
+
+      // Case 3: producer exists and not paused -> nothing to do
+      localVideoTrack.enabled = true
+      setVideoBtnOn()
+    } catch (error) {
+      console.log(error.message)
     }
-  } else if (localVideoTrack) {
+  } else {
+    // Turn off: pause producer (keep m-section stable), stop track to release camera
+    setVideoBtnOff()
 
-    const element = document.querySelector('.fa-video');
-
-    if (element) {
-      element.classList.remove('fa-video');
-      element.classList.add('fa-video-slash');
-      document.getElementById("video_btn").style.background = '#d32f2f'
+    if (videoProducer && !videoProducer.paused) {
+      await videoProducer.pause()
     }
 
-    localVideoTrack.stop();  
-    localStream.removeTrack(localVideoTrack);
-    localVideoTrack = null;
-
-    if (videoProducer) {
-      console.log("Closing previous Video producer...");
-      await videoProducer.close();
-      videoProducer = null;
-
-      videoParams = { params }
+    if (localVideoTrack) {
+      localVideoTrack.stop()
+      localStream.removeTrack(localVideoTrack)
+      localVideoTrack = null
     }
 
-    let source = 'camera'
-    let id = storeidandsource.get(source)
-    console.log(storeidandsource)
-    console.log("Id", id)
-    storeidandsource.delete(source)
-    var elementRemove = document.getElementById("video")
-    elementRemove.remove();
-    socket.emit('AlertServertoRemoveMap', { source, id, roomName, socketid });
+    removeLocalVideoElement()
   }
+}
+
+const attachLocalVideoElement = () => {
+  const videoStream = document.createElement('video');
+  videoStream.className = 'video-stream';
+  videoStream.id = 'video';
+  videoStream.autoplay = false;
+  videoStream.muted = false;
+  videoStream.style.width = '100%'
+  videoStream.srcObject = localStream;
+  videoStream.play();
+  var videoCard = document.getElementById("video-card-1")
+  if (videoCard) {
+    const firstChild = videoCard.firstChild
+    videoCard.insertBefore(videoStream, firstChild)
+  }
+}
+
+const removeLocalVideoElement = () => {
+  var elementRemove = document.getElementById("video")
+  if (elementRemove) elementRemove.remove();
+}
+
+const setVideoBtnOn = () => {
+  const element = document.querySelector('.fa-video-slash');
+  if (element) {
+    element.classList.remove('fa-video-slash');
+    element.classList.add('fa-video');
+    document.getElementById("video_btn").style.background = '#888'
+  }
+}
+
+const setVideoBtnOff = () => {
+  const element = document.querySelector('.fa-video');
+  if (element) {
+    element.classList.remove('fa-video');
+    element.classList.add('fa-video-slash');
+    document.getElementById("video_btn").style.background = '#d32f2f'
+  }
+}
+
+const buildScreenShareCard = (label) => {
+  ScreenSharingPeerId = socketid
+
+  var carouselItem = document.createElement('div');
+  carouselItem.id = 'card_0';
+  carouselItem.className = 'carousel-item active';
+  carouselItem.setAttribute('data-bs-interval', '10000');
+
+  const topBar = document.createElement("div");
+  topBar.id = "top-bar";
+  topBar.className = "top-bar";
+
+  const userSection = document.createElement("div");
+  userSection.className = "user-section";
+
+  const userDetails = document.createElement("span");
+  userDetails.className = "user-details";
+  userDetails.textContent = label;
+
+  userSection.appendChild(userDetails);
+
+  const stopPresentingButton = document.createElement("button");
+  stopPresentingButton.className = "stop-presenting";
+  stopPresentingButton.textContent = "Stop presenting";
+  stopPresentingButton.addEventListener("click", () => {
+    console.log("-----------------------stopPresensting--------------------")
+    let isshare_screenOn = localscreenSharingTrack ? localscreenSharingTrack.enabled : false;
+    alert(isshare_screenOn)
+    toggleshare_screen(!isshare_screenOn);
+  });
+
+  topBar.appendChild(userSection);
+  topBar.appendChild(stopPresentingButton);
+  carouselItem.appendChild(topBar)
+
+  const centerContainer = document.createElement("div");
+  centerContainer.id = "center-container";
+  centerContainer.className = "center-container";
+
+  const videoCard = document.createElement("div");
+  videoCard.className = "video-card";
+
+  const videoElement = document.createElement("video");
+  videoElement.srcObject = localScreenShareStream;
+  videoElement.autoplay = true;
+  videoElement.muted = true;
+  videoElement.style.width = '65%'
+
+  videoCard.appendChild(videoElement);
+  centerContainer.appendChild(videoCard);
+  carouselItem.appendChild(centerContainer)
+  videoElement.play();
+
+  const card1Element = document.querySelector(".card1");
+  var carouselInner = document.querySelector('.carousel-inner');
+  if (card1Element) {
+    card1Element.classList.remove("active");
+    card1Element.removeAttribute('data-bs-interval');
+    carouselInner.insertBefore(carouselItem, card1Element);
+    console.log("Active class removed from card1.");
+  } else {
+    console.log("Element not found.");
+  }
+
+  var Selectcard = document.querySelectorAll(".carousel-item")
+  var lengthcard = Selectcard.length
+  carouselindicatorsbtn(lengthcard)
+}
+
+const removeScreenShareCard = () => {
+  var card_0 = document.getElementById("card_0")
+  if (card_0) card_0.remove();
+
+  const card1Element = document.querySelector(".card1");
+  if (card1Element) {
+    card1Element.classList.add("active");
+    card1Element.setAttribute('data-bs-interval', '10000');
+    console.log("Active class add from card1.");
+  } else {
+    console.log("Element not found.");
+  }
+
+  var Selectcard = document.querySelectorAll(".carousel-item")
+  var lengthcard = Selectcard.length
+  carouselindicatorsbtn(lengthcard)
 }
 
 const toggleshare_screen = async (enablescreenshare) => {
   console.log("ENTERING INTO TOOGLESHARE_SCREEN FUNCT");
   if (enablescreenshare) {
     console.log("ENABLESCREEN SHARE", enablescreenshare)
-    if (!localscreenSharingTrack) {
-      navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' }, 
-        audio: false 
-      }).then(stream => {
-        console.log("check error1 ");
+
+    // Case 1: producer exists but is paused -> restart via replaceTrack + resume (NO renegotiation)
+    if (ScreenShareProducer && ScreenShareProducer.paused) {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: false
+        })
+        localscreenSharingTrack = stream.getVideoTracks()[0]
+        localScreenShareStream.addTrack(localscreenSharingTrack)
+        await ScreenShareProducer.replaceTrack({ track: localscreenSharingTrack })
+        await ScreenShareProducer.resume()
+        buildScreenShareCard(`${username} (You, presenting)`)
+        ScreenSharingOn = true
+      } catch (error) {
+        console.log(error.message)
+      }
+      return
+    }
+
+    // Case 2: first time -> produce on the transport
+    if (!ScreenShareProducer) {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: false
+        })
 
         if (ScreenSharingOn) {
           var card_0 = document.getElementById("card_0")
-          card_0.remove();
+          if (card_0) card_0.remove();
         }
-
-        ScreenSharingPeerId = socketid
-        var carouselItem = document.createElement('div');
-
-        carouselItem.id = 'card_0';
-        carouselItem.className = 'carousel-item active';
-        carouselItem.setAttribute('data-bs-interval', '10000');
-
 
         localscreenSharingTrack = stream.getVideoTracks()[0];
         localScreenShareStream.addTrack(localscreenSharingTrack);
 
         ScreenShareParms = { track: localscreenSharingTrack, appData: { source: 'screen' }, ...ScreenShareParms };
 
-        const topBar = document.createElement("div");
-        topBar.id = "top-bar";
-        topBar.className = "top-bar";
-
-        const userSection = document.createElement("div");
-        userSection.className = "user-section";
-
-        const userDetails = document.createElement("span");
-        userDetails.className = "user-details";
-        userDetails.textContent = `${username} (You, presenting)`;
-
-        userSection.appendChild(userDetails);
-
-        const stopPresentingButton = document.createElement("button");
-        stopPresentingButton.className = "stop-presenting";
-        stopPresentingButton.textContent = "Stop presenting";
-
-        stopPresentingButton.addEventListener("click", () => {
-          console.log("-----------------------stopPresensting--------------------")
-          let isshare_screenOn = localscreenSharingTrack ? localscreenSharingTrack.enabled : false;
-          alert(isshare_screenOn)
-          toggleshare_screen(!isshare_screenOn);
-        });
-
-        topBar.appendChild(userSection);
-        topBar.appendChild(stopPresentingButton);
-
-        carouselItem.appendChild(topBar)
-
-        const centerContainer = document.createElement("div");
-        centerContainer.id = "center-container";
-        centerContainer.className = "center-container";
-
-        const videoCard = document.createElement("div");
-        videoCard.className = "video-card";
-
-        const videoElement = document.createElement("video");
-
-        videoElement.srcObject = localScreenShareStream;
-        videoElement.autoplay = true;
-        videoElement.muted = true;
-
-        videoElement.style.width = '65%'
-
-        var Selectcard = document.querySelectorAll(".carousel-item")
-        var lengthcard = Selectcard.length
-        carouselindicatorsbtn(lengthcard)
-
-        videoCard.appendChild(videoElement);
-
-        centerContainer.appendChild(videoCard);
-
-        carouselItem.appendChild(centerContainer)
-        videoElement.play();
-
-        const card1Element = document.querySelector(".card1");
-        var carouselInner = document.querySelector('.carousel-inner');
-
-        if (card1Element) {
-          card1Element.classList.remove("active");
-          card1Element.removeAttribute('data-bs-interval');
-          carouselInner.insertBefore(carouselItem, card1Element);
-          console.log("Active class removed from card1.");
-        } else {
-          console.log("Element not found.");
-        }
-
+        buildScreenShareCard(`${username} (You, presenting)`)
         ScreenSharingOn = true
 
-        var Selectcard = document.querySelectorAll(".carousel-item")
-        var lengthcard = Selectcard.length
-        carouselindicatorsbtn(lengthcard)
-
-        connectSendTransportScreenShare()
-
-      }).catch(error => console.log(error.message));
-    } else {
-
-      if (ScreenSharingOn) {
-        var card_0 = document.getElementById("card_0")
-        card_0.remove();
+        await connectSendTransportScreenShare()
+      } catch (error) {
+        console.log(error.message)
       }
-
-      ScreenSharingPeerId = socketid
-
-      localscreenSharingTrack.enabled = true;
-
-      var carouselItem = document.createElement('div');
-      var carouselInner = document.querySelector('.carousel-inner');
-
-      carouselItem.id = 'card_0';
-      carouselItem.className = 'carousel-item active';
-      carouselItem.setAttribute('data-bs-interval', '10000');
-
-      const topBar = document.createElement("div");
-      topBar.id = "top-bar";
-      topBar.className = "top-bar";
-
-      const userSection = document.createElement("div");
-      userSection.className = "user-section";
-
-      const userDetails = document.createElement("span");
-      userDetails.className = "user-details";
-      userDetails.textContent = `${username} (You, presenting)`;
-
-      userSection.appendChild(userDetails);
-
-      const stopPresentingButton = document.createElement("button");
-      stopPresentingButton.className = "stop-presenting";
-      stopPresentingButton.textContent = "Stop presenting";
-
-      stopPresentingButton.addEventListener("click", () => {
-        console.log("-----------------------stopPresensting--------------------")
-        let isshare_screenOn = localscreenSharingTrack ? localscreenSharingTrack.enabled : false;
-        alert(isshare_screenOn)
-        toggleshare_screen(!isshare_screenOn);
-      });
-
-      topBar.appendChild(userSection);
-      topBar.appendChild(stopPresentingButton);
-
-      carouselItem.appendChild(topBar)
-
-      const centerContainer = document.createElement("div");
-      centerContainer.id = "center-container";
-      centerContainer.className = "center-container";
-
-      const videoCard = document.createElement("div");
-      videoCard.className = "video-card";
-
-      const videoElement = document.createElement("video");
-
-      videoElement.srcObject = localScreenShareStream;
-      videoElement.autoplay = true;
-      videoElement.muted = true;
-
-      videoCard.appendChild(videoElement);
-
-      centerContainer.appendChild(videoCard);
-
-
-
-      carouselItem.appendChild(centerContainer)
-      videoElement.play();
-
-      const card1Element = document.querySelector(".card1");
-
-      if (card1Element) {
-        card1Element.classList.remove("active");
-        card1Element.removeAttribute('data-bs-interval');
-        carouselInner.insertBefore(carouselItem, card1Element);
-        console.log("Active class removed from card1.");
-      } else {
-        console.log("Element not found.");
-      }
-      ScreenSharingOn = true
-
-      var Selectcard = document.querySelectorAll(".carousel-item")
-      var lengthcard = Selectcard.length
-      carouselindicatorsbtn(lengthcard)
-
-      connectSendTransportScreenShare()
+      return
     }
-  } else if (localscreenSharingTrack) {
+
+    // Case 3: producer exists and not paused -> nothing to do
+    localscreenSharingTrack.enabled = true
+  } else if (localscreenSharingTrack || (ScreenShareProducer && !ScreenShareProducer.paused)) {
     console.log("Now switch off the screen share video")
-    var card_0 = document.getElementById("card_0")
 
-    localscreenSharingTrack.stop();  
-    localScreenShareStream.removeTrack(localscreenSharingTrack);
-    localscreenSharingTrack = null;
-
-    if (ScreenShareProducer) {
-      console.log("Closing previous screen share producer...");
-      await ScreenShareProducer.close();
-      ScreenShareProducer = null;
-
-      ScreenShareParms = { params }
+    // Pause producer (keep m-section stable), stop track to release screen
+    if (ScreenShareProducer && !ScreenShareProducer.paused) {
+      await ScreenShareProducer.pause()
     }
 
-
-    card_0.remove();
-
-
-
-
-    const card1Element = document.querySelector(".card1");
-
-    if (card1Element) {
-      card1Element.classList.add("active");
-      card1Element.setAttribute('data-bs-interval', '10000');
-      console.log("Active class add from card1.");
-    } else {
-      console.log("Element not found.");
+    if (localscreenSharingTrack) {
+      localscreenSharingTrack.stop();
+      localScreenShareStream.removeTrack(localscreenSharingTrack);
+      localscreenSharingTrack = null;
     }
 
-    let source = 'screen'
-    let id = storeidandsource.get(source)
-    storeidandsource.delete(source)
-    socket.emit('AlertServertoRemoveMap', { source, id, roomName, socketid });
+    removeScreenShareCard()
     ScreenSharingOn = false
-    var Selectcard = document.querySelectorAll(".carousel-item")
-    var lengthcard = Selectcard.length
-    carouselindicatorsbtn(lengthcard)
-
   }
 }
 
@@ -656,6 +645,50 @@ function carouselindicatorsbtn(length) {
 }
 
 
+// Function to handle "Stop presenting" action
+// function stopPresenting(userDetailsElement) {
+//   console.log("Now switch off the screen share video")
+//   var card_0 = document.getElementById("card_0")
+//   // let screenElement = document.getElementById("video_screenshare")
+//   // let VideoElement = document.getElementById("video-container")
+
+//   // Stop and remove the track
+//   localscreenSharingTrack.stop();  // This forces the track to end
+//   localScreenShareStream.removeTrack(localscreenSharingTrack);
+//   localscreenSharingTrack = null;
+
+//   //localscreenSharingTrack.enabled = false; // Disable the audio track
+
+//   card_0.remove();
+//   // card_0.style.display = 'none'
+
+
+
+//   //localscreenSharingTrack.enabled = false;
+
+//   const card1Element = document.querySelector(".card1");
+
+//   // Check if the element exists and remove the 'active' class
+//   if (card1Element) {
+//     card1Element.classList.add("active");
+//     card1Element.setAttribute('data-bs-interval', '10000');
+//     console.log("Active class add from card1.");
+//   } else {
+//     console.log("Element not found.");
+//   }
+
+//   ScreenSharingOn = false
+
+//   let source = 'screen'
+//   let id = storeidandsource.get(source)
+//   storeidandsource.delete(source)
+//   console.log(`checking the ID ${id}`)
+//   socket.emit('AlertServertoRemoveMap', { source, id, roomName, socketid });
+//   var Selectcard = document.querySelectorAll(".carousel-item")
+//   var lengthcard = Selectcard.length
+//   carouselindicatorsbtn(lengthcard)
+// }
+
 // A device is an endpoint connecting to a Router on the
 // server side to send/recive media
 const createDevice = async (existingPeers, peerlength) => {
@@ -678,17 +711,15 @@ const createDevice = async (existingPeers, peerlength) => {
       console.log(peer.peerlength)
       console.log(`Found existing peer: ${peer.socketId}, setting up consumer`);
       console.log(peer.peerDetails)
-      if (peer.producerId) {
-        console.log("ProducerId", peer.producerId)
-        AddPeerCard(peer.socketId, peer.peerDetails, peer.producerId, index + 2)
-
+      const producerIds = (peer.producerIds || []).map(p => p.id).filter(Boolean)
+      if (producerIds.length) {
+        console.log("ProducerIds", producerIds)
+        AddPeerCard(peer.socketId, peer.peerDetails, producerIds, index + 2)
       }
       else {
         console.log("No ProducerId")
-        AddPeerCard(peer.socketId, peer.peerDetails, '', index + 2)
+        AddPeerCard(peer.socketId, peer.peerDetails, [], index + 2)
       }
-      // For each existing peer, set up a consumer
-      // createConsumer(peer.socketId,peer.peerDetails);
 
     });
 
@@ -732,7 +763,7 @@ socket.on('alert-socket', (id) => {
         console.log("Match found. Removing CSS...");
 
         cssContent = cssContent.replace(cardPattern, "");
-        existingStyle.textContent = cssContent; 
+        existingStyle.textContent = cssContent; // Update the <style> content
         console.log("CSS Content After Removal:", cssContent);
       } else {
         console.log(`.card${splitClass} styles not found in dynamic styles.`);
@@ -777,7 +808,7 @@ socket.on('alert-socket', (id) => {
       if (cardPattern.test(cssContent)) {
         console.log("Match found. Removing CSS...");
         cssContent = cssContent.replace(cardPattern, "");
-        existingStyle.textContent = cssContent; 
+        existingStyle.textContent = cssContent; // Update the <style> content
         console.log("CSS Content After Removal:", cssContent);
       } else {
         console.log(`.card${splitClass} styles not found in dynamic styles.`);
@@ -822,7 +853,7 @@ socket.on('alert-socket', (id) => {
       if (cardPattern.test(cssContent)) {
         console.log("Match found. Removing CSS...");
         cssContent = cssContent.replace(cardPattern, "");
-        existingStyle.textContent = cssContent; 
+        existingStyle.textContent = cssContent; // Update the <style> content
         console.log("CSS Content After Removal:", cssContent);
       } else {
         console.log(`.card${splitClass} styles not found in dynamic styles.`);
@@ -872,14 +903,16 @@ socket.on('newPeerJoined', (newPeer) => {
   console.log(`New peer joined: ${newPeer.socketId}, setting up consumer`);
   console.log("peers", newPeer.peerDetails)
   console.log("New Peer with peer length", newPeer.peerlength)
-  if (newPeer.producerId) {
-    console.log("newPeerJoined ProducerId", newPeer.producerId)
+  const producerIds = (newPeer.producerIds || []).map(p => p.id).filter(Boolean)
+  if (producerIds.length) {
+    console.log("newPeerJoined ProducerIds", producerIds)
   }
   else {
     console.log(" newPeerJoined,No ProducerId")
   }
-
-  AddPeerCard(newPeer.socketId, newPeer.peerDetails, '', newPeer.peerlength)
+  // Set up a consumer for the new peer
+  //createConsumer(newPeer.socketId , newPeer.peerDetails);
+  AddPeerCard(newPeer.socketId, newPeer.peerDetails, producerIds, newPeer.peerlength)
 });
 
 const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
@@ -893,13 +926,23 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
   if (CardCount >= 6) {
     checkdivisionforcard++;
 
+    // const button = document.createElement("button");
+
+    // // Set the attributes dynamically
+    // button.type = "button";
+    // button.setAttribute("data-bs-target", "#carouselExampleDark");
+    // button.setAttribute("data-bs-slide-to", `${checkdivisionforcard}`);
+    // button.setAttribute("aria-label", `Slide ${checkdivisionforcard + 1}`);
+
+    // const indicatorContainer = document.querySelector(".carousel-indicators");
+    // indicatorContainer.appendChild(button);
 
     const outerDiv = document.createElement("div");
     outerDiv.classList.add("carousel-item", `card${checkdivisionforcard}`);
 
     const innerDiv = document.createElement("div");
-    innerDiv.id = `video-container${checkdivisionforcard}`; 
-    innerDiv.classList.add("grid-container"); 
+    innerDiv.id = `video-container${checkdivisionforcard}`; // Set the id
+    innerDiv.classList.add("grid-container"); // Add the class
 
     outerDiv.appendChild(innerDiv);
     const carouselContainer = document.querySelector(".carousel-inner");
@@ -910,6 +953,22 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
     console.log("if isshare_screenOn", ScreenSharingOn)
     carouselindicatorsbtn(length)
 
+    // if (ScreenSharingOn) {
+    //   let check = document.querySelectorAll(".carousel-item")
+    //   let length = check.length
+    //   console.log("if isshare_screenOn", ScreenSharingOn)
+    //   carouselindicatorsbtn(length)
+    // } else {
+    //   let check = document.querySelectorAll(".carousel-item")
+    //   let length = check.length
+    //   console.log("else isshare_screenOn", ScreenSharingOn)
+    //   const Btnleft = document.getElementById("Btnleft")
+    //   const Btnright = document.getElementById("Btnright")
+
+    //   Btnleft.removeAttribute("style")
+    //   Btnright.removeAttribute("style")
+    //   carouselindicatorsbtn(length)
+    // }
 
   }
 
@@ -920,7 +979,7 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
   }
 
 
-  const username = peerDetails.name || 'Unknown User'; 
+  const username = peerDetails.name || 'Unknown User'; // Get the username or default to 'Unknown User'
   console.log("Connect Receive Transport", username);
   console.log("Connect Receive Transport", peerDetails);
 
@@ -933,9 +992,11 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
   userNameDiv.className = 'user-name';
   userNameDiv.textContent = username;
 
-
+  // Append the media element and username div to the video card
+  // videoCard.appendChild(mediaElement);
   videoCard.appendChild(userNameDiv);
 
+  // Append the video card to the video container in the DOM
   const videoContainer = document.getElementById(`video-container${checkdivisionforcard}`);
   videoContainer.appendChild(videoCard);
 
@@ -948,11 +1009,13 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
       'g'
     );
 
+    //console.log("CSS Content Before Removal:", cssContent);
 
     if (cardPattern.test(cssContent)) {
       console.log("Match found. Removing CSS...");
       cssContent = cssContent.replace(cardPattern, "");
-      existingStyle.textContent = cssContent; 
+      existingStyle.textContent = cssContent; // Update the <style> content
+      // console.log("CSS Content After Removal:", cssContent);
     } else {
       console.log(`.card${checkdivisionforcard} styles not found in dynamic styles.`);
     }
@@ -989,11 +1052,13 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
       'g'
     );
 
+    //console.log("CSS Content Before Removal:", cssContent);
 
     if (cardPattern.test(cssContent)) {
       console.log("Match found. Removing CSS...");
       cssContent = cssContent.replace(cardPattern, "");
-      existingStyle.textContent = cssContent; 
+      existingStyle.textContent = cssContent; // Update the <style> content
+      //console.log("CSS Content After Removal:", cssContent);
     } else {
       console.log(`.card${checkdivisionforcard} styles not found in dynamic styles.`);
     }
@@ -1030,10 +1095,12 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
       `\\.card${checkdivisionforcard}\\s*\\.grid-container\\s*\\{[\\s\\S]*?\\}\\s*\\.card${checkdivisionforcard}\\s*\\.grid-container\\s*\\.video-card${checkdivisionforcard}\\s*\\{[\\s\\S]*?\\}`,
       'g'
     );
+    //console.log("CSS Content Before Removal:", cssContent);
     if (cardPattern.test(cssContent)) {
       console.log("Match found. Removing CSS...");
       cssContent = cssContent.replace(cardPattern, "");
-      existingStyle.textContent = cssContent; 
+      existingStyle.textContent = cssContent; // Update the <style> content
+      //console.log("CSS Content After Removal:", cssContent);
     } else {
       console.log(`.card${checkdivisionforcard} styles not found in dynamic styles.`);
     }
@@ -1073,10 +1140,11 @@ const AddPeerCard = (SocketId, peerDetails, producerId, peerlength) => {
   }
 
 
-  if (producerId != '') {
-    console.log("ProducerId in AddpeerCard", producerId)
-    console.log("checking new card about producer",peerDetails.device)
-    signalNewConsumerTransport(producerId, SocketId, peerDetails.device)
+  const producerIds = Array.isArray(producerId) ? producerId : (producerId ? [producerId] : [])
+  if (producerIds.length) {
+    console.log("ProducerIds in AddpeerCard", producerIds)
+    console.log("checking new card about producer", peerDetails.device)
+    producerIds.forEach(pid => signalNewConsumerTransport(pid, SocketId, peerDetails.device))
   } else {
     console.log("Empty String in producerId")
   }
@@ -1146,10 +1214,43 @@ const createSendTransport = () => {
       }
     })
 
-
+    // connectSendTransport()
   })
 }
 
+// const connectSendTransport = async () => {
+//   // we now call produce() to instruct the producer transport
+//   // to send media to the Router
+//   // https://mediasoup.org/documentation/v3/mediasoup-client/api/#transport-produce
+//   // this action will trigger the 'connect' and 'produce' events above
+
+//   audioProducer = await producerTransport.produce(audioParams);
+//   videoProducer = await producerTransport.produce(videoParams);
+
+//   audioProducer.on('trackended', () => {
+//     console.log('audio track ended')
+
+//     // close audio track
+//   })
+
+//   audioProducer.on('transportclose', () => {
+//     console.log('audio transport ended')
+
+//     // close audio track
+//   })
+
+//   videoProducer.on('trackended', () => {
+//     console.log('video track ended')
+
+//     // close video track
+//   })
+
+//   videoProducer.on('transportclose', () => {
+//     console.log('video transport ended')
+
+//     // close video track
+//   })
+// }
 
 const connectSendTransportAudio = async () => {
   audioProducer = await producerTransport.produce(audioParams);
@@ -1213,7 +1314,7 @@ const connectSendTransportScreenShare = async () => {
     ScreenShareProducer.close();
     ScreenShareProducer = null;
 
-    ScreenShareParms = { params }
+    ScreenShareParms = { ...params }
 
     var card_0 = document.getElementById("card_0")
 
@@ -1221,13 +1322,14 @@ const connectSendTransportScreenShare = async () => {
       card_0.remove();
       ScreenSharingOn = false
 
-      localscreenSharingTrack.stop();  
+      localscreenSharingTrack.stop();  // This forces the track to end
       localScreenShareStream.removeTrack(localscreenSharingTrack);
       localscreenSharingTrack = null;
 
 
       const card1Element = document.querySelector(".card1");
 
+      // Check if the element exists and remove the 'active' class
       if (card1Element) {
         card1Element.classList.add("active");
         card1Element.setAttribute('data-bs-interval', '10000');
@@ -1264,7 +1366,8 @@ const signalNewConsumerTransport = async (remoteProducerId, socketId, producerDe
   consumingTransports.push(remoteProducerId);
 
   await socket.emit('createWebRtcTransport', { consumer: true }, ({ params }) => {
-
+    // The server sends back params needed 
+    // to create Send Transport on the client side
     if (params.error) {
       console.log(params.error)
       return
@@ -1275,22 +1378,26 @@ const signalNewConsumerTransport = async (remoteProducerId, socketId, producerDe
     try {
       consumerTransport = device.createRecvTransport(params)
     } catch (error) {
-
+      // exceptions: 
+      // {InvalidStateError} if not loaded
+      // {TypeError} if wrong arguments.
       console.log(error)
       return
     }
 
     consumerTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
       try {
-
+        // Signal local DTLS parameters to the server side transport
+        // see server's socket.on('transport-recv-connect', ...)
         await socket.emit('transport-recv-connect', {
           dtlsParameters,
           serverConsumerTransportId: params.id,
         })
 
+        // Tell the transport that parameters were transmitted.
         callback()
       } catch (error) {
-
+        // Tell the transport that something was wrong
         errback(error)
       }
     })
@@ -1304,6 +1411,14 @@ const signalNewConsumerTransport = async (remoteProducerId, socketId, producerDe
 // server informs the client of a new producer just joined
 socket.on('new-producer', ({ producerId, socketId, producerDevice }) => signalNewConsumerTransport(producerId, socketId, producerDevice))
 
+// const getProducers = () => {
+//   socket.emit('getProducers', producerIds => {
+//     console.log(producerIds)
+//     // for each of the producer create a consumer
+//     // producerIds.forEach(id => signalNewConsumerTransport(id))
+//     producerIds.forEach(signalNewConsumerTransport)
+//   })
+// }
 
 const connectRecvTransport = async (consumerTransport, remoteProducerId, serverConsumerTransportId, socketId, producerDevice) => {
   // for consumer, we need to tell the server first
@@ -1321,7 +1436,8 @@ const connectRecvTransport = async (consumerTransport, remoteProducerId, serverC
 
     console.log(`Consumer Params ${params}`)
     console.log(producerDevice)
-
+    // then consume with the local consumer transport
+    // which creates a consumer
     const consumer = await consumerTransport.consume({
       id: params.id,
       producerId: params.producerId,
@@ -1352,7 +1468,7 @@ const connectRecvTransport = async (consumerTransport, remoteProducerId, serverC
           mediaElement.className = 'video-stream';
           mediaElement.id = remoteProducerId;
           mediaElement.autoplay = true;
-          mediaElement.muted = true; 
+          mediaElement.muted = true; // You might want to mute video streams to prevent feedback
           if (producerDevice == 'web') {
             console.log(`Device checking what is comming ${producerDevice} True part`)
             mediaElement.style.width = '100%'
@@ -1377,7 +1493,7 @@ const connectRecvTransport = async (consumerTransport, remoteProducerId, serverC
           ScreenSharingPeerId = params.PeerId
           var carouselItem = document.createElement('div');
 
-          
+          // Set the attributes for the new element
           carouselItem.id = 'card_0';
           carouselItem.className = 'carousel-item active';
           carouselItem.setAttribute('data-bs-interval', '10000');
@@ -1385,19 +1501,28 @@ const connectRecvTransport = async (consumerTransport, remoteProducerId, serverC
           topBar.id = "top-bar";
           topBar.className = "top-bar";
 
-          
+          // Create the user section div
           const userSection = document.createElement("div");
           userSection.className = "user-section";
 
-          
+          // Create the user details span
           const userDetails = document.createElement("span");
           userDetails.className = "user-details";
           userDetails.textContent = `${params.Peername} presenting`;
 
           userSection.appendChild(userDetails);
 
+          // const stopPresentingButton = document.createElement("button");
+          // stopPresentingButton.className = "stop-presenting";
+          // stopPresentingButton.textContent = "Stop presenting";
+
+          // // Add click event listener for the button
+          // stopPresentingButton.addEventListener("click", () => {
+          //   stopPresenting(userDetails);
+          // });
 
           topBar.appendChild(userSection);
+          //topBar.appendChild(stopPresentingButton);
 
           carouselItem.appendChild(topBar)
 
@@ -1420,22 +1545,33 @@ const connectRecvTransport = async (consumerTransport, remoteProducerId, serverC
           mediaElement.className = 'video-stream';
           mediaElement.id = remoteProducerId;
           mediaElement.autoplay = true;
-          mediaElement.muted = true; 
+          mediaElement.muted = true; // You might want to mute video streams to prevent feedback
 
           if (producerDevice == 'web') {
             mediaElement.style.width = '65%'
           }
 
+          // const videoElement = document.createElement("video");
+
+          // // Set video attributes
+          // videoElement.srcObject = localScreenShareStream;
+          // videoElement.autoplay = true;
+          // videoElement.muted = true;
+
 
 
           videoCard.appendChild(mediaElement);
 
+          // Append the video card to the center container
           centerContainer.appendChild(videoCard);
           console.log("Appended video screen_share", videoCard)
           carouselItem.appendChild(centerContainer)
+          // card_0.style.display = 'block'
+          //videoElement.play();
 
           const card1Element = document.querySelector(".card1");
           var carouselInner = document.querySelector('.carousel-inner');
+          // Check if the element exists and remove the 'active' class
           if (card1Element) {
             card1Element.classList.remove("active");
             card1Element.removeAttribute('data-bs-interval');
@@ -1457,6 +1593,7 @@ const connectRecvTransport = async (consumerTransport, remoteProducerId, serverC
         mediaElement.autoplay = true;
         mediaElement.style.display = 'none';
 
+        // Append the audio element to the video card (or any other container)
         videoCard.appendChild(mediaElement);
         console.log(`Audio element appended for remoteProducerId: ${remoteProducerId}`);
       }
@@ -1465,9 +1602,11 @@ const connectRecvTransport = async (consumerTransport, remoteProducerId, serverC
       return
     }
 
+    // // Add the media track to the video or audio element
     const { track } = consumer;
     mediaElement.srcObject = new MediaStream([track]);
-
+    // // the server consumer started with media paused
+    // // so we need to inform the server to resume
     socket.emit('consumer-resume', { serverConsumerId: params.serverConsumerId })
   })
 }
@@ -1476,16 +1615,24 @@ socket.on('producer-closed', ({ remoteProducerId, socketId, source }) => {
 
   console.log("Checking the socketid and source------------------------------------------------------------------------------------------ ", socketId, source)
   console.log("remoteproducerid", remoteProducerId)
-
+  // server notification is received when a producer is closed
+  // we need to close the client-side consumer and associated transport
   const producerToClose = consumerTransports.find(transportData => transportData.producerId === remoteProducerId)
+  if (!producerToClose) {
+    console.log('producer-closed: no consumer found for', remoteProducerId)
+    return
+  }
   producerToClose.consumerTransport.close()
   producerToClose.consumer.close()
 
-
+  // remove the consumer transport from the list
   consumerTransports = consumerTransports.filter(transportData => transportData.producerId !== remoteProducerId)
 
-  if (source == 'camera') {
+  // allow this producer id to be consumed again in the future
+  consumingTransports = consumingTransports.filter(id => id !== remoteProducerId)
 
+  if (source == 'camera') {
+    // remove the video div element
     const videoContainer = document.getElementById("video-container");
     const elementToRemove = document.getElementById(`${remoteProducerId}`);
 
@@ -1508,6 +1655,7 @@ socket.on('producer-closed', ({ remoteProducerId, socketId, source }) => {
     if (elementToRemove) {
       console.log("screen eske ander")
       elementToRemove.remove();
+      // elementToRemove.style.display = 'none'
       var Selectcard = document.querySelectorAll(".carousel-item")
       var lengthcard = Selectcard.length
       carouselindicatorsbtn(lengthcard)
@@ -1525,7 +1673,8 @@ socket.on('alert-ScreenSharing-peer', (SocketId) => {
 
   console.log("Now switch off the screen share video")
   var card_0 = document.getElementById("card_0")
-
+  // let screenElement = document.getElementById("video_screenshare")
+  // let VideoElement = document.getElementById("video-container")
   localscreenSharingTrack.stop();
   localscreenSharingTrack = null;
 
@@ -1534,7 +1683,9 @@ socket.on('alert-ScreenSharing-peer', (SocketId) => {
   let source = 'screen'
   let id = storeidandsource.get(source)
   storeidandsource.delete(source)
-
+  // socket.emit('AlertServertoRemoveMap', { source, id, roomName });
+  // ScreenSharingOn = false
+  // carouselindicatorsbtn(lengthcard - 1)
 
 });
 
@@ -1543,7 +1694,7 @@ document.getElementById('mic_btn').addEventListener('click', () => {
   //console.log("audio", localStream)
   // Toggle audio state
   let isAudioOn = localAudioTrack ? localAudioTrack.enabled : false;
-  //alert(isAudioOn)
+  alert(isAudioOn)
   toggleAudio(!isAudioOn);
 });
 
@@ -1552,20 +1703,31 @@ document.getElementById('video_btn').addEventListener('click', () => {
   console.log("vid", localStream)
   // Toggle video state
   let isVideoOn = localVideoTrack ? localVideoTrack.enabled : false;
-  //alert(isVideoOn)
+  alert(isVideoOn)
   toggleVideo(!isVideoOn);
 });
 
 document.getElementById('share_screen').addEventListener('click', () => {
-  //alert("click_share_screen")
+  alert("click_share_screen")
   console.log("share_screen", localScreenShareStream)
-
+  // if (ScreenSharingOn) {
+  //   alert(`Switching this Id ${ScreenSharingPeerId}`)
+  //   document.getElementById("card_0").innerHTML = ''
+  //   // socket.to(ScreenSharingPeerId).emit('alert-ScreenSharing-peer', socketid)
+  //   socket.emit('alert-server-screensharing', { SocketId: socketid })
+  // }
+  // Toggle video state
   let isshare_screenOn = localscreenSharingTrack ? localscreenSharingTrack.enabled : false;
   alert(isshare_screenOn)
   toggleshare_screen(!isshare_screenOn);
 });
 
 document.getElementById('call_ended').addEventListener('click', () => {
+  // Logic to remove the peer card
+  // removePeerCard(socketid);
+
+  // Emit a 'peer-exited' event to the server to notify other peers
+  //socket.emit('peer-ended', socketid);
 
   console.log(`Call ended. Peer card removed for peer ID: ${socketid}`);
   window.location.href = '/'
@@ -1597,20 +1759,21 @@ document.getElementById("pop_up_button").addEventListener('click', () => {
   popup.style.display = "flex";
 })
 
-
+// Close popup when clicking the close (×) icon
 closeBtn.addEventListener("click", () => {
   popup.style.display = "none";
 });
 
+// Close popup when clicking outside the content
 window.addEventListener("click", (e) => {
   if (!popup.contains(e.target) && e.target != button_popup) {
     popup.style.display = "none";
   }
 });
 
-
+// Copy share link to clipboard
 copyBtn.addEventListener("click", () => {
   shareLink.select();
   document.execCommand("copy");
-
+  //alert("Copied");
 });
