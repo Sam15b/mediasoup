@@ -27,6 +27,7 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
   }
   return '127.0.0.1'
 })()
+const EMULATOR_IP = process.env.EMULATOR_IP || '10.0.2.2'
 
 // API key for remote (non-localhost) connection authentication
 const API_KEY = process.env.API_KEY || ''
@@ -84,8 +85,8 @@ const options = {
 }
 
 const httpsServer = https.createServer(options, app)
-httpsServer.listen(5000, () => {
-  console.log('listening on port: ' + 5000)
+httpsServer.listen(4000, () => {
+  console.log('listening on port: ' + 4000)
 })
 
 const io = new Server(httpsServer)
@@ -386,8 +387,10 @@ connections.on('connection', async socket => {
 
     // Determine announcedIp based on where the client is connecting from
     const clientIp = socket.handshake.address
-    const announcedIp = isLocalIp(clientIp) ? LOCAL_IP : PUBLIC_IP
-    console.log(`createWebRtcTransport | client: ${clientIp} | announcedIp: ${announcedIp}`)
+    const isFlutter = socket.handshake.auth?.platform === 'flutter'
+    const isLoopback = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1'
+    const announcedIp = isLoopback && isFlutter ? EMULATOR_IP : (isLocalIp(clientIp) ? LOCAL_IP : PUBLIC_IP)
+    console.log(`createWebRtcTransport | client: ${clientIp} | flutter: ${isFlutter} | announcedIp: ${announcedIp}`)
 
     createWebRtcTransport(router, announcedIp).then(
       transport => {
@@ -544,42 +547,47 @@ connections.on('connection', async socket => {
 
   // see client's socket.emit('transport-produce', ...)
   socket.on('transport-produce', async ({ kind, rtpParameters, appData }, callback) => {
-    // call produce based on the prameters from the client
-    const producer = await getTransport(socket.id).produce({
-      kind,
-      rtpParameters,
-      appData
-    })
+    try {
+      // call produce based on the prameters from the client
+      const producer = await getTransport(socket.id).produce({
+        kind,
+        rtpParameters,
+        appData
+      })
 
-    if (appData?.source == 'screen') {
-      console.log('Produce Source:', appData?.source);
-      ScreenPeer = peers[socket.id].peerDetails.name
-      ScreenShareSocketId = socket.id
+      if (appData?.source == 'screen') {
+        console.log('Produce Source:', appData?.source);
+        ScreenPeer = peers[socket.id].peerDetails.name
+        ScreenShareSocketId = socket.id
+      }
+
+
+      pp.set(producer.id, producer);
+
+      // add producer to the producers array
+      const { roomName, peerDetails } = peers[socket.id]
+
+      addProducer(producer, roomName, peers[socket.id].peerDetails.name)
+
+      informConsumers(roomName, socket.id, producer.id)
+
+      console.log('Producer ID: ', producer.id, producer.kind)
+
+      producer.on('transportclose', () => {
+        console.log('-----transport for this producer closed 24495224')
+        producer.close()
+      })
+
+      // Send back to the client the Producer's id
+      callback({
+        id: producer.id,
+        source: appData.source,
+        producersExist: producers.length > 1 ? true : false
+      })
+    } catch (error) {
+      console.error('transport-produce error:', error.message)
+      callback({ error: error.message })
     }
-
-
-    pp.set(producer.id, producer);
-
-    // add producer to the producers array
-    const { roomName, peerDetails } = peers[socket.id]
-
-    addProducer(producer, roomName, peers[socket.id].peerDetails.name)
-
-    informConsumers(roomName, socket.id, producer.id)
-
-    console.log('Producer ID: ', producer.id, producer.kind)
-
-    producer.on('transportclose', () => {
-      console.log('-----transport for this producer closed 24495224')
-      producer.close()
-    })
-
-    // Send back to the client the Producer's id
-    callback({
-      id: producer.id,
-      source: appData.source,
-      producersExist: producers.length > 1 ? true : false
-    })
   })
 
   // see client's socket.emit('transport-recv-connect', ...)
