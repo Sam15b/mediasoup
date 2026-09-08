@@ -490,6 +490,7 @@ connections.on('connection', async socket => {
     // Iterate over all peers in the room
     const producerDevice = peers[socketid].peerDetails.device
     rooms[roomName].peers.forEach(socketId => {
+      if (socketId === socketid) return
       if (peers[socketId]) {
         const peerSocket = peers[socketId].socket;
         //console.log("peerSocket", peerSocket)
@@ -651,6 +652,9 @@ connections.on('connection', async socket => {
 
         // send the parameters to the client
         callback({ params })
+      } else {
+        console.log('router cannot consume for', remoteProducerId)
+        callback({ params: { error: 'cannot consume' } })
       }
     } catch (error) {
       console.log(error.message)

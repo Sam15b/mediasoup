@@ -18700,7 +18700,7 @@
     const decryptedRoomId = await decryptData(key, encryptedId, Idiv);
     roomName = decryptedRoomId;
     username = decryptedName;
-    const baseurl = process.env.SERVER_URL || "https://" + window.location.hostname + (window.location.port ? ":" + window.location.port : "") + window.location.pathname;
+    const baseurl = process.env.SERVER_URL || "https://" + window.location.hostname + (window.location.port ? ":" + window.location.port : "") + "/";
     const link = `${baseurl}?RID=${encodeURIComponent(roomName)}`;
     const message = `${username} has invited you to join a Meeting..%0A%0AJoin the meeting:${link}%0A%0AOr by RoomId: ${roomName}`;
     const msg = `${username} has invited you to join a Meeting . Join the meeting:`;
@@ -19586,13 +19586,15 @@
       if (videoCard) {
         console.log("SocketId", socketId);
         if (params2.kind === "video") {
-          console.log("Checking Source", params2.source);
+          console.log("Checking Source", params2.Source);
           if (params2.Source == "camera") {
             mediaElement = document.createElement("video");
             mediaElement.className = "video-stream";
             mediaElement.id = remoteProducerId;
             mediaElement.autoplay = true;
             mediaElement.muted = true;
+            mediaElement.playsinline = true;
+            mediaElement.setAttribute("playsinline", "");
             if (producerDevice == "web") {
               console.log(`Device checking what is comming ${producerDevice} True part`);
               mediaElement.style.width = "100%";
@@ -19679,6 +19681,10 @@
       }
       const { track } = consumer;
       mediaElement.srcObject = new MediaStream([track]);
+      console.log("Consumer track:", track);
+      console.log("  track kind:", track.kind, "enabled:", track.enabled, "muted:", track.muted, "readyState:", track.readyState);
+      console.log("  mediaElement:", mediaElement.tagName, "id:", mediaElement.id);
+      console.log("  srcObject:", mediaElement.srcObject);
       socket.emit("consumer-resume", { serverConsumerId: params2.serverConsumerId });
     });
   };
