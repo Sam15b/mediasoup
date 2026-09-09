@@ -18803,6 +18803,7 @@
           localAudioTrack.enabled = true;
           await audioProducer.replaceTrack({ track: localAudioTrack });
           await audioProducer.resume();
+          socket.emit("producer-resumed", { producerId: storeidandsource.get("mic"), socketId: socketid, source: "mic", roomName });
           setMicBtnOn();
           return;
         }
@@ -18824,6 +18825,7 @@
       setMicBtnOff();
       if (audioProducer && !audioProducer.paused) {
         await audioProducer.pause();
+        socket.emit("producer-paused", { producerId: storeidandsource.get("mic"), socketId: socketid, source: "mic", roomName });
       }
       if (localAudioTrack) {
         localAudioTrack.stop();
@@ -18859,6 +18861,7 @@
           localStream.addTrack(localVideoTrack);
           await videoProducer.replaceTrack({ track: localVideoTrack });
           await videoProducer.resume();
+          socket.emit("producer-resumed", { producerId: storeidandsource.get("camera"), socketId: socketid, source: "camera", roomName });
           attachLocalVideoElement();
           setVideoBtnOn();
           return;
@@ -18881,6 +18884,7 @@
       setVideoBtnOff();
       if (videoProducer && !videoProducer.paused) {
         await videoProducer.pause();
+        socket.emit("producer-paused", { producerId: storeidandsource.get("camera"), socketId: socketid, source: "camera", roomName });
       }
       if (localVideoTrack) {
         localVideoTrack.stop();
@@ -19009,6 +19013,7 @@
           localScreenShareStream.addTrack(localscreenSharingTrack);
           await ScreenShareProducer.replaceTrack({ track: localscreenSharingTrack });
           await ScreenShareProducer.resume();
+          socket.emit("producer-resumed", { producerId: storeidandsource.get("screen"), socketId: socketid, source: "screen", roomName });
           buildScreenShareCard(`${username} (You, presenting)`);
           ScreenSharingOn = true;
         } catch (error) {
@@ -19042,6 +19047,7 @@
       console.log("Now switch off the screen share video");
       if (ScreenShareProducer && !ScreenShareProducer.paused) {
         await ScreenShareProducer.pause();
+        socket.emit("producer-paused", { producerId: storeidandsource.get("screen"), socketId: socketid, source: "screen", roomName });
       }
       if (localscreenSharingTrack) {
         localscreenSharingTrack.stop();
@@ -19577,7 +19583,11 @@
           consumerTransport,
           serverConsumerTransportId: params2.id,
           producerId: remoteProducerId,
-          consumer
+          consumer,
+          source: params2.Source,
+          peerSocketId: socketId,
+          peerName: params2.Peername,
+          producerDevice
         }
       ];
       const videoCard = document.getElementById(`peer_${socketId}`);
@@ -19688,6 +19698,129 @@
       socket.emit("consumer-resume", { serverConsumerId: params2.serverConsumerId });
     });
   };
+  socket.on("producer-paused", ({ producerId, socketId, source }) => {
+    console.log(`producer-paused | producerId: ${producerId} | source: ${source}`);
+    if (source === "camera" || source === "mic") {
+      const element = document.getElementById(`${producerId}`);
+      if (element) {
+        element.remove();
+        console.log(`[producer-paused] Removed ${source} element for producer ${producerId}`);
+      }
+    } else if (source === "screen") {
+      const card_0 = document.getElementById("card_0");
+      if (card_0) {
+        card_0.remove();
+        console.log("[producer-paused] Removed screen share card");
+        const card1 = document.querySelector(".card1");
+        if (card1) {
+          card1.classList.add("active");
+          card1.setAttribute("data-bs-interval", "10000");
+        }
+        const cards = document.querySelectorAll(".carousel-item");
+        carouselindicatorsbtn(cards.length);
+      }
+    }
+  });
+  socket.on("producer-resumed", ({ producerId, socketId, source }) => {
+    console.log(`producer-resumed | producerId: ${producerId} | source: ${source}`);
+    const consumerData = consumerTransports.find((t) => t.producerId === producerId);
+    if (!consumerData) {
+      console.log(`[producer-resumed] No consumer found for producer ${producerId}`);
+      return;
+    }
+    const { consumer, peerSocketId, peerName, producerDevice } = consumerData;
+    const track = consumer.track;
+    if (source === "camera") {
+      const videoCard = document.getElementById(`peer_${socketId}`);
+      if (!videoCard) {
+        console.log(`[producer-resumed] No video card found for peer_${socketId}`);
+        return;
+      }
+      if (document.getElementById(`${producerId}`)) return;
+      const mediaElement = document.createElement("video");
+      mediaElement.className = "video-stream";
+      mediaElement.id = producerId;
+      mediaElement.autoplay = true;
+      mediaElement.muted = true;
+      mediaElement.playsinline = true;
+      mediaElement.setAttribute("playsinline", "");
+      if (producerDevice == "web") {
+        mediaElement.style.width = "100%";
+      }
+      videoCard.insertBefore(mediaElement, videoCard.firstChild);
+      mediaElement.srcObject = new MediaStream([track]);
+      console.log(`[producer-resumed] Recreated camera element for producer ${producerId}`);
+    } else if (source === "mic") {
+      const videoCard = document.getElementById(`peer_${socketId}`);
+      if (!videoCard) {
+        console.log(`[producer-resumed] No video card found for peer_${socketId}`);
+        return;
+      }
+      if (document.getElementById(`${producerId}`)) return;
+      const mediaElement = document.createElement("audio");
+      mediaElement.className = "audio-stream";
+      mediaElement.id = producerId;
+      mediaElement.autoplay = true;
+      mediaElement.style.display = "none";
+      videoCard.appendChild(mediaElement);
+      mediaElement.srcObject = new MediaStream([track]);
+      console.log(`[producer-resumed] Recreated audio element for producer ${producerId}`);
+    } else if (source === "screen") {
+      if (document.getElementById("card_0")) return;
+      var carouselItem = document.createElement("div");
+      carouselItem.id = "card_0";
+      carouselItem.className = "carousel-item active";
+      carouselItem.setAttribute("data-bs-interval", "10000");
+      const topBar = document.createElement("div");
+      topBar.id = "top-bar";
+      topBar.className = "top-bar";
+      const userSection = document.createElement("div");
+      userSection.className = "user-section";
+      const userDetails = document.createElement("span");
+      userDetails.className = "user-details";
+      userDetails.textContent = `${peerName || "Peer"} presenting`;
+      userSection.appendChild(userDetails);
+      topBar.appendChild(userSection);
+      carouselItem.appendChild(topBar);
+      const centerContainer = document.createElement("div");
+      centerContainer.id = "center-container";
+      centerContainer.className = "center-container";
+      const videoCard = document.createElement("div");
+      videoCard.className = "video-card";
+      if (producerDevice == "web") {
+        videoCard.style.width = "100%";
+        videoCard.style.maxWidth = "100%";
+      } else if (producerDevice == "phone") {
+        videoCard.style.height = "100vh";
+      }
+      const mediaElement = document.createElement("video");
+      mediaElement.className = "video-stream";
+      mediaElement.id = producerId;
+      mediaElement.autoplay = true;
+      mediaElement.muted = true;
+      mediaElement.playsinline = true;
+      mediaElement.setAttribute("playsinline", "");
+      if (producerDevice == "web") {
+        mediaElement.style.width = "65%";
+      }
+      videoCard.appendChild(mediaElement);
+      centerContainer.appendChild(videoCard);
+      carouselItem.appendChild(centerContainer);
+      const card1Element = document.querySelector(".card1");
+      var carouselInner = document.querySelector(".carousel-inner");
+      if (card1Element) {
+        card1Element.classList.remove("active");
+        card1Element.removeAttribute("data-bs-interval");
+        carouselInner.insertBefore(carouselItem, card1Element);
+      } else {
+        carouselInner.appendChild(carouselItem);
+      }
+      mediaElement.srcObject = new MediaStream([track]);
+      var Selectcard = document.querySelectorAll(".carousel-item");
+      carouselindicatorsbtn(Selectcard.length);
+      console.log(`[producer-resumed] Recreated screen share card for producer ${producerId}`);
+    }
+  });
   socket.on("producer-closed", ({ remoteProducerId, socketId, source }) => {
     console.log("Checking the socketid and source------------------------------------------------------------------------------------------ ", socketId, source);
     console.log("remoteproducerid", remoteProducerId);

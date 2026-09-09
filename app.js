@@ -375,6 +375,16 @@ connections.on('connection', async socket => {
     // socket.to(rooms[roomName].peers).emit('alert-socket', socket.id)
   })
 
+  // Relay producer pause/resume notifications to other peers in the room
+  // so consumers can remove/recreate the media DOM elements
+  socket.on('producer-paused', ({ producerId, socketId, source, roomName }) => {
+    socket.to(rooms[roomName].peers).emit('producer-paused', { producerId, socketId, source })
+  })
+
+  socket.on('producer-resumed', ({ producerId, socketId, source, roomName }) => {
+    socket.to(rooms[roomName].peers).emit('producer-resumed', { producerId, socketId, source })
+  })
+
   const createRoom = async (roomName, socketId) => {
     // worker.createRouter(options)
     // options = { mediaCodecs, appData }
