@@ -14,8 +14,47 @@ import favicon from 'serve-favicon'
 import { Server } from 'socket.io'
 import mediasoup from 'mediasoup'
 
-// Network IPs from .env (with auto-detect fallback for LOCAL_IP)
-const PUBLIC_IP = process.env.PUBLIC_IP || '127.0.0.1'
+// Deployment mode: 'local' for development, 'aws' for EC2 production
+const DEPLOYMENT_MODE = process.env.DEPLOYMENT_MODE || 'local'
+
+// EC2 instance metadata endpoint for Elastic IP auto-detection
+const EC2_METADATA_URL = 'http://169.254.169.254/latest/meta-data/public-ipv4'
+
+// Fetch the Elastic IP (public IPv4) from the EC2 instance metadata service.
+// Returns null if not running on EC2 or metadata is unavailable.
+// Times out after 2s so non-EC2 environments aren't blocked.
+const getElasticIp = async () => {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 2000)
+    const res = await fetch(EC2_METADATA_URL, { signal: controller.signal })
+    clearTimeout(timeout)
+    if (!res.ok) return null
+    const ip = (await res.text()).trim()
+    return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) ? ip : null
+  } catch {
+    return null
+  }
+}
+
+// Resolve PUBLIC_IP:
+//   'aws' mode  → auto-detect Elastic IP from EC2 metadata (fallback to env var)
+//   'local' mode → use PUBLIC_IP env var directly
+let PUBLIC_IP
+if (DEPLOYMENT_MODE === 'aws') {
+  const elasticIp = await getElasticIp()
+  PUBLIC_IP = elasticIp || process.env.PUBLIC_IP || '127.0.0.1'
+  if (elasticIp) {
+    console.log(`[AWS] Elastic IP auto-detected from EC2 metadata: ${elasticIp}`)
+  } else {
+    console.warn(`[AWS] EC2 metadata unavailable — falling back to PUBLIC_IP env var: ${PUBLIC_IP}`)
+  }
+} else {
+  PUBLIC_IP = process.env.PUBLIC_IP || '127.0.0.1'
+}
+
+// LOCAL_IP: auto-detect from network interfaces if not set in .env.
+// On EC2 this picks up the instance's private IP (e.g. 172.31.x.x).
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
   const nets = os.networkInterfaces()
   for (const name of Object.keys(nets)) {
@@ -29,13 +68,18 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
 })()
 const EMULATOR_IP = process.env.EMULATOR_IP || '10.0.2.2'
 
+// Server listen port (configurable for EC2 / reverse proxy scenarios)
+const PORT = process.env.PORT || 4000
+
 // API key for remote (non-localhost) connection authentication
 const API_KEY = process.env.API_KEY || ''
+
+console.log(`[Network] DEPLOYMENT_MODE=${DEPLOYMENT_MODE} | PUBLIC_IP=${PUBLIC_IP} | LOCAL_IP=${LOCAL_IP} | PORT=${PORT}`)
 
 // Helper: check if a client IP is local
 const isLocalIp = (clientIp) => {
   return clientIp === '127.0.0.1' || clientIp === '::1' ||
-    clientIp === '::ffff:127.0.0.1' || clientIp.startsWith('172.28.') ||
+    clientIp.startsWith('172.28.') || clientIp.startsWith('172.31.') ||
     clientIp.startsWith('192.168.') || clientIp.startsWith('10.')
 }
 
@@ -85,8 +129,8 @@ const options = {
 }
 
 const httpsServer = https.createServer(options, app)
-httpsServer.listen(4000, () => {
-  console.log('listening on port: ' + 4000)
+httpsServer.listen(PORT, () => {
+  console.log('listening on port: ' + PORT)
 })
 
 const io = new Server(httpsServer)
@@ -141,8 +185,8 @@ var ScreenShareSocketId
 
 const createWorker = async () => {
   worker = await mediasoup.createWorker({
-    rtcMinPort: 2000,
-    rtcMaxPort: 2020,
+    rtcMinPort: Number(process.env.RTC_MIN_PORT) || 2000,
+    rtcMaxPort: Number(process.env.RTC_MAX_PORT) || 2020,
   })
   console.log(`worker pid ${worker.pid}`)
 

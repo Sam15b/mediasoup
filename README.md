@@ -113,19 +113,29 @@ openssl req -x509 -newkey rsa:2048 -keyout server/ssl/key.pem \
 
 ### Configuration
 
-Update the `announcedIp` in `app.js` to match your machine's IP address:
+The server reads network configuration from a `.env` file. Key variables:
 
-```js
-// app.js → createWebRtcTransport()
-listenIps: [
-  {
-    ip: '0.0.0.0',
-    announcedIp: 'YOUR_LOCAL_IP',  // e.g., '192.168.1.100' or '127.0.0.1'
-  }
-]
+| Variable | Default | Description |
+|---|---|---|
+| `DEPLOYMENT_MODE` | `local` | `local` for development, `aws` for EC2 with Elastic IP auto-detection |
+| `PUBLIC_IP` | `127.0.0.1` | Public IP advertised to WebRTC clients. In `aws` mode, auto-detected from EC2 metadata if blank. |
+| `LOCAL_IP` | auto-detect | Instance private IP. Auto-detected from network interfaces if blank. |
+| `PORT` | `4000` | HTTPS server listen port |
+| `RTC_MIN_PORT` | `2000` | Mediasoup WebRTC media port range start |
+| `RTC_MAX_PORT` | `2020` | Mediasoup WebRTC media port range end |
+| `SERVER_URL` | — | URL clients use to reach the server |
+| `API_KEY` | — | Required for remote (non-localhost) Socket.IO connections |
+
+For local development, set `PUBLIC_IP` to your machine's LAN IP:
+
+```bash
+# .env — local development
+DEPLOYMENT_MODE=local
+PUBLIC_IP=192.168.1.100    # your machine's IP (ifconfig / ip addr)
+PORT=4000
 ```
 
-> Find your IP with `ifconfig` (macOS/Linux) or `ipconfig` (Windows).
+> The `announcedIp` is chosen dynamically per-client: local clients get `LOCAL_IP`, remote clients get `PUBLIC_IP` (or the Elastic IP on AWS).
 
 ### Running
 
@@ -143,10 +153,161 @@ npm run build
 Open your browser at:
 
 ```
-https://localhost:5000
+https://localhost:4000
 ```
 
 > Your browser will warn about the self-signed certificate. Click **Advanced > Proceed** to continue.
+
+---
+
+## AWS EC2 Deployment (Elastic IP)
+
+MediaStream supports deployment to **AWS EC2** with automatic **Elastic IP** detection. When `DEPLOYMENT_MODE=aws`, the server queries the [EC2 instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data.html) at startup to fetch the Elastic IP and uses it as the `announcedIp` for all remote WebRTC clients — no manual IP configuration needed.
+
+### Why this solves NAT issues
+
+On EC2, the instance has a **private IP** (e.g. `172.31.x.x`) that is 1:1 NAT'd to the **Elastic IP** (public IP) at the AWS network layer. This means:
+
+- The server binds to `0.0.0.0` (all interfaces) — it listens on the private IP.
+- AWS automatically maps incoming traffic on the Elastic IP to the instance's private IP.
+- **No port forwarding or NAT traversal (STUN/TURN) is needed** — the Elastic IP is directly reachable.
+- The `announcedIp` advertised to WebRTC clients is the Elastic IP, so ICE candidates resolve correctly.
+
+### Step-by-step deployment
+
+#### 1. Launch an EC2 instance
+
+- **AMI:** Ubuntu 24.04 LTS (or any Linux with Node.js 22+ support)
+- **Instance type:** `t3.medium` or larger (2+ vCPUs, 4GB+ RAM recommended for video)
+- **Network:** Assign an **Elastic IP** and associate it with the instance
+
+#### 2. Configure the Security Group
+
+Open the following inbound ports:
+
+| Port | Protocol | Source | Purpose |
+|---|---|---|---|
+| **4000** | TCP | `0.0.0.0/0` | HTTPS signaling (Express + Socket.IO) |
+| **2000–2020** | UDP | `0.0.0.0/0` | Mediasoup WebRTC media (UDP, preferred) |
+| **2000–2020** | TCP | `0.0.0.0/0` | Mediasoup WebRTC media (TCP fallback) |
+| **22** | TCP | your IP | SSH access (restrict to your IP for security) |
+
+> If you customize `RTC_MIN_PORT` / `RTC_MAX_PORT` in `.env`, open that range instead.
+
+#### 3. Install Node.js and the app on the instance
+
+```bash
+# Install Node.js 22 via nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.bashrc
+nvm install 22
+
+# Clone and install
+git clone https://github.com/Sam15b/mediasoup.git
+cd mediasoup
+npm install
+
+# Generate SSL certificates
+mkdir -p server/ssl
+openssl req -x509 -newkey rsa:2048 -keyout server/ssl/key.pem \
+  -out server/ssl/cert.pem -days 365 -nodes \
+  -subj "/CN=YOUR_ELASTIC_IP"
+```
+
+#### 4. Configure `.env` for AWS
+
+```bash
+# .env — AWS EC2 deployment
+DEPLOYMENT_MODE=aws
+PUBLIC_IP=                    # Leave blank — auto-detected from EC2 metadata
+LOCAL_IP=                     # Leave blank — auto-detected from network interfaces
+PORT=4000
+RTC_MIN_PORT=2000
+RTC_MAX_PORT=2020
+SERVER_URL=https://YOUR_ELASTIC_IP:4000/
+API_KEY=your_secure_api_key_here
+```
+
+#### 5. Build the client and start the server
+
+```bash
+npm run build      # Build the client bundle
+npm start          # Start the server
+```
+
+At startup you should see:
+
+```
+[AWS] Elastic IP auto-detected from EC2 metadata: 3.xx.xx.xx
+[Network] DEPLOYMENT_MODE=aws | PUBLIC_IP=3.xx.xx.xx | LOCAL_IP=172.31.xx.xx | PORT=4000
+listening on port: 4000
+```
+
+#### 6. Access the application
+
+Open your browser at:
+
+```
+https://YOUR_ELASTIC_IP:4000/sfu/testroom
+```
+
+> Accept the self-signed certificate warning to proceed.
+
+### Keeping the server running
+
+Use a process manager to keep the server running after SSH disconnection:
+
+```bash
+# Option 1: PM2
+npm install -g pm2
+pm2 start app.js --name mediasoup
+pm2 save
+pm2 startup    # Enable auto-restart on reboot
+
+# Option 2: nohup (simple, no persistence)
+nohup npm start > server.log 2>&1 &
+```
+
+### How the Elastic IP auto-detection works
+
+```
+┌──────────────────────────────────────────────────────┐
+│                   EC2 Instance                        │
+│                                                       │
+│  1. Server starts with DEPLOYMENT_MODE=aws            │
+│  2. getElasticIp() queries 169.254.169.254             │
+│     └─► http://169.254.169.254/latest/meta-data/      │
+│         public-ipv4  →  "3.xx.xx.xx" (Elastic IP)      │
+│  3. PUBLIC_IP = "3.xx.xx.xx"                           │
+│  4. LOCAL_IP = auto-detected (172.31.xx.xx)            │
+│                                                       │
+│  WebRTC Transport:                                    │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ listenIps: [{                                   │  │
+│  │   ip: '0.0.0.0',          ← binds private IP    │  │
+│  │   announcedIp: '3.xx.xx.xx' ← Elastic IP        │  │
+│  │ }]                                              │  │
+│  └─────────────────────────────────────────────────┘  │
+│                                                       │
+│  AWS 1:1 NAT: Elastic IP ←→ Private IP                │
+│  (no port forwarding needed)                          │
+└──────────────────────────────────────────────────────┘
+         │
+    ┌────▼────┐  ┌────▼────┐
+    │ Peer A  │  │ Peer B  │
+    │ (Web)   │  │ (Flutter)│
+    └─────────┘  └─────────┘
+```
+
+### Troubleshooting EC2 deployment
+
+| Issue | Solution |
+|---|---|
+| **`[AWS] EC2 metadata unavailable`** | Ensure the instance has a public IP/Elastic IP. Check that the metadata service is reachable: `curl http://169.254.169.254/latest/meta-data/public-ipv4` |
+| **WebRTC connection fails** | Verify the Security Group allows UDP 2000-2020. Check the server log shows the correct Elastic IP as `PUBLIC_IP`. |
+| **Browser can't reach server** | Confirm TCP 4000 is open in the Security Group. Try `https://ELASTIC_IP:4000/` directly. |
+| **Video freezes / audio cuts** | The RTC port range may be too narrow for concurrent peers. Widen `RTC_MIN_PORT`/`RTC_MAX_PORT` and update the Security Group accordingly. |
+| **Flutter app can't connect** | Ensure the app sends the correct `API_KEY` via Socket.IO auth and uses `SERVER_URL` with the Elastic IP. |
 
 ---
 
@@ -154,7 +315,7 @@ https://localhost:5000
 
 ### Creating a Room
 
-1. Navigate to `https://localhost:5000`
+1. Navigate to `https://localhost:4000`
 2. Enter your name and a room ID (or use the auto-generated link)
 3. Share the invitation link via WhatsApp, Facebook, Twitter, LinkedIn, or Email
 
@@ -251,7 +412,7 @@ mediasoup/
 ### Camera shows black screen / "Could not start video source"
 
 - **Another app is using the camera.** Close other browser tabs, Zoom, Teams, or OBS Studio that may hold the camera.
-- **Browser permissions.** Ensure `https://localhost:5000` has camera/mic permissions in your browser settings.
+- **Browser permissions.** Ensure `https://localhost:4000` has camera/mic permissions in your browser settings.
 - **HTTPS required.** WebRTC requires HTTPS (or localhost). The self-signed cert must be accepted.
 
 ### `WorkerClosedError: Channel closed`
